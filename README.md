@@ -1,13 +1,21 @@
-# Cuida Patas
+# CuidaPatas frontend
 
-Repositorio del proyecto Cuida Patas.
+Frontend responsive del primer avance de CuidaPatas, construido con React, Vite y React Router.
 
-## Desarrollo
-
-La rama principal es `main`. Para cada cambio, crea una rama nueva a partir de ella:
+## Ejecutar localmente
 
 ```bash
-git switch main
-git switch -c nombre-de-la-rama
+npm install
+npm run dev
 ```
 
+## Rutas
+
+- `/login`
+- `/mascotas/max`
+- `/salud`
+- `/citas`
+- `/calendario`
+- `/directorio`
+
+Las rutas `/citas` y `/calendario` comparten la misma vista porque las dos capturas entregadas para esas pantallas son idénticas.
