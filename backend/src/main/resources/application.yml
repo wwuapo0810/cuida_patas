@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: cuidapatas-backend
+
+  datasource:
+    # Las tres variables las inyecta docker-compose.yml desde el archivo .env.
+    # No hay valores por defecto a propósito: la app debe fallar de inmediato
+    # si se intenta arrancar sin configuración, en vez de apuntar a una base equivocada.
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    # validate, no update: si alguien agrega un @Column sin su migración Flyway,
+    # la aplicación falla al arrancar con un mensaje claro en vez de desincronizar
+    # la base que comparte todo el equipo.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # Muestra el estado del componente de base de datos, que es justamente
+      # lo que hay que poder verificar desde fuera del contenedor.
+      show-details: always
+
+logging:
+  level:
+    org.flywaydb: INFO

@@ -1,0 +1,64 @@
+# CuidaPatas — stack de desarrollo
+#
+# Levanta la base de datos y el backend. Nadie necesita instalar Java, Maven ni
+# MySQL: todo se compila y corre dentro de contenedores.
+#
+#   cp .env.example .env
+#   docker compose up -d --build
+#
+# Este archivo vive en la raíz (y no dentro de backend/) para que más adelante se
+# pueda agregar aquí mismo un servicio para el frontend, en la misma red, sin tener
+# que fusionar dos archivos de compose.
+
+services:
+
+  mysql:
+    # Versión fijada al parche exacto: con la etiqueta flotante 8.4 cada quien
+    # podría terminar con una versión distinta según cuándo descargue la imagen.
+    image: mysql:8.4.11
+    container_name: cuidapatas-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - cuidapatas-net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: cuidapatas-backend
+    restart: unless-stopped
+    environment:
+      # El host es "mysql": el nombre del servicio dentro de la red de compose.
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        # No basta con esperar a que el contenedor arranque: MySQL tarda unos
+        # segundos más en aceptar conexiones. Esto espera a que esté realmente sano.
+        condition: service_healthy
+    networks:
+      - cuidapatas-net
+
+volumes:
+  mysql_data:
+
+networks:
+  cuidapatas-net:
+    driver: bridge
