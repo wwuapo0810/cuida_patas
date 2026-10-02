@@ -7,6 +7,8 @@ import java.util.List;
 
 public interface MascotaRepository extends JpaRepository<Mascota, Long> {
 
+    List<Mascota> findByActivoTrue();
+
     List<Mascota> findByUsuarioIdAndActivoTrue(Long usuarioId);
 
     /** Cuenta las mascotas vigentes de un usuario: sostiene el límite del plan gratuito. */

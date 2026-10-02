@@ -16,6 +16,8 @@ pisarse.
 - Proyecto Spring Boot conectado a MySQL
 - Las 8 entidades JPA con sus relaciones
 - Los 8 repositorios Spring Data
+- API REST para listar mascotas y listar/crear registros de salud
+- Cálculo de estado de vacunas, desparasitaciones y medicamentos en servicios
 - Esquema versionado con Flyway
 - Todo dockerizado: no hay que instalar Java, Maven ni MySQL
 
@@ -23,12 +25,12 @@ pisarse.
 
 | Falta | De quién es |
 |---|---|
-| Controladores REST, DTOs, cálculo del estado al día / por vencer / vencido | Andrey |
 | Spring Security, BCrypt, JWT, protección de rutas | Josué |
 | Conexión del frontend React | Laura |
 | Despliegue público, QR, datos de prueba | Jonathan |
 
-Si abrís este proyecto y no ves endpoints, no es un error: todavía no existen.
+Los endpoints de negocio están bajo `/api`; el endpoint de salud de Actuator sigue
+disponible en `/actuator/health`.
 
 ---
 
@@ -180,9 +182,7 @@ Viven en `.env` en la raíz del repositorio, que **no se sube al repositorio**. 
 
 ---
 
-## Siguientes pasos, por persona
-
-### Andrey — API REST
+## API REST
 
 Los repositorios ya existen; no hace falta crearlos. Están en
 `com.cuidapatas.backend.repository`:
@@ -197,14 +197,39 @@ Todos extienden `JpaRepository`, así que ya traen `findAll`, `findById`, `save`
 `MascotaRepository.countByUsuarioIdAndActivoTrue(...)`, este último para el límite de 2
 mascotas del plan gratuito.
 
-Lo que falta crear: paquetes `controller`, `service` y `dto` dentro de
-`com.cuidapatas.backend`.
+La API está organizada en los paquetes `controller`, `service`, `dto` y `exception`
+dentro de `com.cuidapatas.backend`.
 
-El cálculo del estado va en la capa de servicios, sobre las fechas que ya están
-guardadas (`proxima_fecha` en vacunas y desparasitaciones, `fecha_fin` en medicamentos,
-`fecha_hora` en citas). La regla acordada: más de 15 días es **al día**, 15 días o menos
-es **por vencer**, fecha pasada es **vencido**. Ese estado no se guarda en la base: se
-calcula al momento de consultar.
+La API expone las mascotas activas y los registros de salud por mascota:
+
+```text
+GET  /api/mascotas?usuarioId={id-opcional}
+GET  /api/mascotas/{mascotaId}/vacunas
+POST /api/mascotas/{mascotaId}/vacunas
+GET  /api/mascotas/{mascotaId}/desparasitaciones
+POST /api/mascotas/{mascotaId}/desparasitaciones
+GET  /api/mascotas/{mascotaId}/medicamentos
+POST /api/mascotas/{mascotaId}/medicamentos
+```
+
+Los `POST` reciben JSON con los nombres de los campos del DTO, sin enviar
+`id` ni `mascotaId`: la mascota se toma de la URL. Las respuestas de salud incluyen
+`estado`, calculado en cada consulta con los valores `AL_DIA`, `POR_VENCER`,
+`VENCIDO` o `SIN_FECHA`. Una fecha pasada está vencida; una fecha entre hoy y 15
+días está por vencer; una fecha posterior a 15 días está al día. Los registros sin
+fecha de próxima aplicación o término quedan como `SIN_FECHA`.
+
+Mientras Spring Security no esté integrado, `usuarioId` es un filtro opcional del
+listado de mascotas. La validación de pertenencia de los recursos quedará ligada al
+usuario autenticado cuando se agregue esa capa.
+
+El cálculo del estado de salud va en la capa de servicios, sobre las fechas que ya están
+guardadas (`proxima_fecha` en vacunas y desparasitaciones, `fecha_fin` en medicamentos).
+La regla acordada: más de 15 días es **al día**, 15 días o menos es **por vencer**, y
+una fecha pasada es **vencido**. Ese estado no se guarda en la base: se calcula al
+momento de consultar.
+
+## Pendientes del equipo
 
 ### Josué — Autenticación
 
@@ -219,9 +244,9 @@ Hay que agregar `spring-boot-starter-security` y la librería de JWT al `pom.xml
 
 ### Laura — Frontend
 
-Esta entrega no te desbloquea directamente: dependés de los endpoints que exponga
-Andrey. Lo que sí conviene revisar desde ya es qué nombres de campo usa el modelo, para
-que el front hable el mismo idioma que la API (ver la tabla de entidades más arriba).
+El frontend puede consumir estos endpoints. Conviene usar los nombres de campo de los
+DTOs para que el front hable el mismo idioma que la API (ver la tabla de entidades más
+arriba).
 
 ### Jonathan — Despliegue y datos de prueba
 
