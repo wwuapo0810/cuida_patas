@@ -167,10 +167,6 @@ function Sidebar() {
         <SidebarItem {...navItems[5]} />
         <BotonCerrarSesion />
       </nav>
-      <div className="sidebar__note">
-        <strong>2 mascotas registradas</strong>
-        <span>Mantén sus perfiles actualizados para recibir mejores recordatorios.</span>
-      </div>
     </aside>
   );
 }
