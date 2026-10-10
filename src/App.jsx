@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -10,6 +10,7 @@ import {
   Heart,
   Home,
   LockKeyhole,
+  LogOut,
   Mail,
   MapPin,
   Menu,
@@ -31,6 +32,9 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+
+import { useAuth } from "./auth/AuthContext";
+import RutaProtegida from "./auth/RutaProtegida";
 
 const navItems = [
   { label: "Inicio", icon: Home, disabled: true },
@@ -193,12 +197,39 @@ function Sidebar() {
         ))}
         <p className="sidebar__group">CUENTA</p>
         <SidebarItem {...navItems[5]} />
+        <BotonCerrarSesion />
       </nav>
       <div className="sidebar__note">
         <strong>2 mascotas registradas</strong>
         <span>Mantén sus perfiles actualizados para recibir mejores recordatorios.</span>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Cierra la sesión: borra el token y manda a /login.
+ *
+ * Usa el mismo estilo .nav-item que el resto del menú para no romper el diseño
+ * de la barra lateral.
+ */
+function BotonCerrarSesion() {
+  const { usuario, salir } = useAuth();
+  const navigate = useNavigate();
+
+  function handleSalir() {
+    salir();
+    navigate("/login", { replace: true });
+  }
+
+  return (
+    <button className="nav-item nav-item--salir" type="button" onClick={handleSalir}>
+      <LogOut size={18} />
+      <span>
+        Cerrar sesión
+        {usuario && <small>{usuario.correo}</small>}
+      </span>
+    </button>
   );
 }
 
@@ -293,22 +324,83 @@ function PageHeading({ title, subtitle, action }) {
   );
 }
 
-function PrimaryButton({ children, icon: Icon = Plus, type = "button", onClick }) {
+function PrimaryButton({ children, icon: Icon = Plus, type = "button", onClick, disabled = false }) {
   return (
-    <button className="button button--primary" type={type} onClick={onClick}>
+    <button className="button button--primary" type={type} onClick={onClick} disabled={disabled}>
       {Icon && <Icon size={16} />}
       {children}
     </button>
   );
 }
 
+/** Error de validación devuelto por el backend para un campo concreto. */
+function ErrorCampo({ mensaje }) {
+  if (!mensaje) return null;
+  return <small className="error-campo">{mensaje}</small>;
+}
+
+/**
+ * Pantalla de acceso. Mismo diseño del prototipo; lo que cambia es que ahora los
+ * dos formularios hablan con /api/auth/login y /api/auth/registro.
+ */
 function AuthPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { usuario, entrar, registrarse } = useAuth();
 
-  function handleLogin(event) {
-    event.preventDefault();
-    navigate("/mascotas/max");
+  const [modo, setModo] = useState("login"); // "login" | "registro"
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const [erroresCampo, setErroresCampo] = useState({});
+
+  /*
+   * Si RutaProtegida redirigió hasta acá, vuelve a la pantalla que se quería
+   * abrir. Si no, la primera pantalla de la aplicación es Salud.
+   */
+  const destino = location.state?.destino ?? "/salud";
+
+  // Cubre dos casos: recién inició sesión, o ya tenía sesión y abrió /login a mano.
+  useEffect(() => {
+    if (usuario) {
+      navigate(destino, { replace: true });
+    }
+  }, [usuario, destino, navigate]);
+
+  function cambiarModo(nuevoModo) {
+    setModo(nuevoModo);
+    setError(null);
+    setErroresCampo({});
   }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError(null);
+    setErroresCampo({});
+    setEnviando(true);
+
+    const datos = Object.fromEntries(new FormData(event.currentTarget));
+
+    try {
+      if (modo === "login") {
+        await entrar({ correo: datos.correo, contrasena: datos.contrasena });
+      } else {
+        await registrarse({
+          nombre: datos.nombre,
+          correo: datos.correo,
+          contrasena: datos.contrasena,
+          telefono: datos.telefono,
+        });
+      }
+      // La redirección la hace el useEffect de arriba al cambiar 'usuario'.
+    } catch (errorApi) {
+      setError(errorApi.message);
+      setErroresCampo(errorApi.campos ?? {});
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const esRegistro = modo === "registro";
 
   return (
     <main className="auth-page">
@@ -342,53 +434,146 @@ function AuthPage() {
       <section className="auth-form-panel">
         <div className="auth-form-wrap">
           <div className="segmented segmented--wide" aria-label="Acceso">
-            <button className="is-selected" type="button">Iniciar sesión</button>
-            <button type="button" aria-disabled="true">Crear cuenta</button>
+            <button
+              className={esRegistro ? "" : "is-selected"}
+              type="button"
+              onClick={() => cambiarModo("login")}
+            >
+              Iniciar sesión
+            </button>
+            <button
+              className={esRegistro ? "is-selected" : ""}
+              type="button"
+              onClick={() => cambiarModo("registro")}
+            >
+              Crear cuenta
+            </button>
           </div>
           <div className="auth-form__heading">
-            <h2>Bienvenida de nuevo</h2>
-            <p>Ingresa tus datos para ver el estado de tus mascotas.</p>
+            <h2>{esRegistro ? "Creá tu cuenta" : "Bienvenido de nuevo"}</h2>
+            <p>
+              {esRegistro
+                ? "Registrate para llevar el control de salud de tus mascotas."
+                : "Ingresá tus datos para ver el estado de tus mascotas."}
+            </p>
           </div>
-          <form className="auth-form" onSubmit={handleLogin}>
+
+          {/* key: fuerza a React a recrear el formulario al cambiar de modo, así no
+              arrastra lo que el usuario ya había escrito en la otra pestaña. */}
+          <form className="auth-form" key={modo} onSubmit={handleSubmit}>
+            {esRegistro && (
+              <label>
+                Nombre completo
+                <span className="input-with-icon">
+                  <UsersRound size={17} />
+                  <input
+                    type="text"
+                    name="nombre"
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    placeholder="María Fernández"
+                  />
+                </span>
+                <ErrorCampo mensaje={erroresCampo.nombre} />
+              </label>
+            )}
+
             <label>
               Correo electrónico
               <span className="input-with-icon">
                 <Mail size={17} />
                 <input
                   type="email"
-                  name="email"
-                  defaultValue="maria.fernandez@correo.com"
+                  name="correo"
+                  required
+                  maxLength={160}
                   autoComplete="email"
+                  placeholder="tucorreo@ejemplo.com"
                 />
               </span>
+              <ErrorCampo mensaje={erroresCampo.correo} />
             </label>
+
             <label>
               Contraseña
               <span className="input-with-icon">
                 <LockKeyhole size={17} />
                 <input
                   type="password"
-                  name="password"
-                  defaultValue="cuidapatas"
-                  autoComplete="current-password"
+                  name="contrasena"
+                  required
+                  /* El backend exige 8 como mínimo: validarlo también acá evita un
+                     viaje al servidor para un error evitable. */
+                  minLength={esRegistro ? 8 : undefined}
+                  maxLength={72}
+                  autoComplete={esRegistro ? "new-password" : "current-password"}
+                  placeholder={esRegistro ? "Mínimo 8 caracteres" : "••••••••"}
                 />
               </span>
+              <ErrorCampo mensaje={erroresCampo.contrasena} />
             </label>
-            <div className="auth-options">
-              <label className="check-label">
-                <input type="checkbox" defaultChecked />
-                Recordarme
+
+            {esRegistro && (
+              <label>
+                Teléfono <span className="label-opcional">(opcional)</span>
+                <span className="input-with-icon">
+                  <Phone size={17} />
+                  <input
+                    type="tel"
+                    name="telefono"
+                    maxLength={30}
+                    autoComplete="tel"
+                    placeholder="8888-8888"
+                  />
+                </span>
+                <ErrorCampo mensaje={erroresCampo.telefono} />
               </label>
-              <button className="link-button" type="button">¿Olvidaste tu contraseña?</button>
-            </div>
-            <PrimaryButton type="submit" icon={null}>Iniciar sesión</PrimaryButton>
+            )}
+
+            {!esRegistro && (
+              <div className="auth-options">
+                <label className="check-label">
+                  <input type="checkbox" defaultChecked />
+                  Recordarme
+                </label>
+                <button className="link-button" type="button" aria-disabled="true">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+            )}
+
+            {error && (
+              <p className="form-error" role="alert">
+                <CircleAlert size={16} /> {error}
+              </p>
+            )}
+
+            <PrimaryButton type="submit" icon={null} disabled={enviando}>
+              {enviando
+                ? "Enviando…"
+                : esRegistro
+                  ? "Crear cuenta"
+                  : "Iniciar sesión"}
+            </PrimaryButton>
           </form>
+
+          {/* Login social: queda como en el prototipo, sin implementar todavía. */}
           <div className="divider"><span>o continúa con</span></div>
           <div className="social-row">
-            <button className="button button--outline" type="button"><strong className="google-g">G</strong> Google</button>
-            <button className="button button--outline" type="button"><strong className="facebook-f">f</strong> Facebook</button>
+            <button className="button button--outline" type="button" aria-disabled="true"><strong className="google-g">G</strong> Google</button>
+            <button className="button button--outline" type="button" aria-disabled="true"><strong className="facebook-f">f</strong> Facebook</button>
           </div>
-          <p className="auth-register">¿Aún no tienes cuenta? <button className="link-button link-button--orange" type="button">Regístrate gratis</button></p>
+          <p className="auth-register">
+            {esRegistro ? "¿Ya tenés cuenta? " : "¿Aún no tenés cuenta? "}
+            <button
+              className="link-button link-button--orange"
+              type="button"
+              onClick={() => cambiarModo(esRegistro ? "login" : "registro")}
+            >
+              {esRegistro ? "Iniciá sesión" : "Registrate gratis"}
+            </button>
+          </p>
         </div>
       </section>
     </main>
@@ -750,12 +935,17 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Única ruta pública. */}
       <Route path="/login" element={<AuthPage />} />
-      <Route path="/mascotas/max" element={<PetProfilePage />} />
-      <Route path="/salud" element={<HealthPage />} />
-      <Route path="/citas" element={<CalendarPage />} />
-      <Route path="/calendario" element={<CalendarPage />} />
-      <Route path="/directorio" element={<DirectoryPage />} />
+
+      {/* Todo lo demás exige sesión: sin token, RutaProtegida redirige a /login. */}
+      <Route path="/mascotas/max" element={<RutaProtegida><PetProfilePage /></RutaProtegida>} />
+      <Route path="/salud" element={<RutaProtegida><HealthPage /></RutaProtegida>} />
+      <Route path="/citas" element={<RutaProtegida><CalendarPage /></RutaProtegida>} />
+      <Route path="/calendario" element={<RutaProtegida><CalendarPage /></RutaProtegida>} />
+      <Route path="/directorio" element={<RutaProtegida><DirectoryPage /></RutaProtegida>} />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

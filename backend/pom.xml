@@ -32,6 +32,12 @@
             perseguirlo: MySQL 8.0 ya está fuera de soporte y 8.4 es la versión LTS.
         -->
         <flyway.version>10.20.1</flyway.version>
+        <!--
+            JJWT (firma y verificación de los tokens JWT). Spring Boot no gestiona
+            esta versión, así que se fija aquí. Las tres artefactos (api, impl,
+            jackson) deben llevar siempre la misma versión.
+        -->
+        <jjwt.version>0.12.6</jjwt.version>
     </properties>
 
     <dependencies>
@@ -61,6 +67,38 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!--
+            Autenticación y autorización. Al agregar este starter, Spring Boot pasa a
+            proteger TODAS las rutas por defecto: lo que queda público se declara
+            explícitamente en SecurityConfig.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
+            JWT. 'api' es lo único que se importa en el código; 'impl' y 'jackson'
+            son implementación en tiempo de ejecución (de ahí el scope runtime).
+        -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Migraciones de esquema versionadas -->

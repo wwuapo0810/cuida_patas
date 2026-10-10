@@ -1719,5 +1719,105 @@ strong {
     transition-duration: 0.01ms !important;
   }
 }
-  display: inline-flex;
+
+/* ===========================================================================
+   Autenticación: estados de carga y error
+   ---------------------------------------------------------------------------
+   Reutiliza las variables de color de :root para no introducir colores nuevos.
+   =========================================================================== */
+
+/* Mensaje de error general del formulario (credenciales incorrectas, API caída). */
+.form-error {
+  padding: 11px 13px;
+  border: 1px solid rgb(184 86 79 / 28%);
+  border-radius: 9px;
+  display: flex;
   align-items: center;
+  gap: 8px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.form-error svg {
+  flex-shrink: 0;
+}
+
+/* Error de validación de un campo concreto, debajo del input. */
+.error-campo {
+  color: var(--danger);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.label-opcional {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* El botón primario deshabilitado no debe verse clickeable mientras se envía. */
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  box-shadow: none;
+}
+
+.button:disabled:hover {
+  transform: none;
+}
+
+/* Cerrar sesión: es un <button>, así que hay que neutralizar los estilos propios
+   del navegador para que se vea igual que los <NavLink> del menú. */
+.nav-item--salir {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.nav-item--salir span {
+  display: grid;
+  line-height: 1.2;
+}
+
+.nav-item--salir small {
+  color: rgb(255 255 255 / 48%);
+  font-size: 0.68rem;
+  font-weight: 500;
+  /* El correo puede ser largo: se recorta en vez de romper el ancho del menú. */
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pantalla intermedia mientras se verifica el token guardado al abrir la app. */
+.pantalla-cargando {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  background: var(--page);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--teal-100);
+  border-top-color: var(--teal-700);
+  border-radius: 50%;
+  animation: girar 760ms linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(1turn);
+  }
+}

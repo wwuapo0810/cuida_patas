@@ -37,6 +37,26 @@ management:
       # lo que hay que poder verificar desde fuera del contenedor.
       show-details: always
 
+# ---------------------------------------------------------------------------
+# Configuración propia de CuidaPatas
+# ---------------------------------------------------------------------------
+app:
+  jwt:
+    # Clave para firmar los tokens. Igual que las credenciales de la base: sin
+    # valor por defecto, para que nadie arranque con un secreto conocido.
+    # Mínimo 32 bytes (lo valida JwtService al arrancar). Generar con:
+    #   openssl rand -base64 48
+    secreto: ${JWT_SECRET}
+    # 8 horas: cubre una jornada de trabajo sin obligar a reingresar. Como no hay
+    # refresh tokens todavía, al vencer hay que volver a iniciar sesión.
+    expiracion-minutos: ${JWT_EXPIRACION_MINUTOS:480}
+
+  cors:
+    # Orígenes del navegador autorizados a llamar la API, separados por coma.
+    # El valor por defecto es el servidor de desarrollo de Vite; en despliegue se
+    # sobreescribe con APP_CORS_ORIGINS.
+    origenes-permitidos: ${APP_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
 logging:
   level:
     org.flywaydb: INFO
