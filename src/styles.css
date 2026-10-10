@@ -1821,3 +1821,86 @@ strong {
     transform: rotate(1turn);
   }
 }
+
+/* ===========================================================================
+   Datos reales de la API: estados de carga, error y celdas sin valor
+   =========================================================================== */
+
+/* Cuarto tono de badge, para los registros sin próxima fecha ("SIN_FECHA").
+   Los otros tres (good / warning / danger) ya existían. */
+.status-chip--neutral { background: var(--teal-100); color: var(--teal-700); }
+
+/* Aviso de error de carga, sobre el ancho completo del contenido. */
+.aviso-error {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-left: 4px solid var(--danger);
+}
+
+.aviso-error > div {
+  display: grid;
+  gap: 2px;
+  /* Empuja el botón "Reintentar" al extremo derecho. */
+  margin-right: auto;
+}
+
+.aviso-error strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.aviso-error span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.aviso-error__icono {
+  display: inline-flex;
+  color: var(--danger);
+}
+
+/* Panel de carga: misma altura aproximada que una tabla con datos, para que el
+   contenido no salte cuando termina de cargar. */
+.panel-cargando {
+  min-height: 190px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* Fila de "no hay resultados" dentro de una tabla. */
+.data-table__vacio {
+  padding: 26px 18px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+/* Texto para los bloques que todavía no tienen datos (o endpoint). */
+.sin-datos {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* Dato secundario debajo del tipo de registro, p. ej. el producto usado. */
+.celda-detalle {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.76rem;
+}
+
+/* Los <NavLink> que usan clase .button necesitan perder el subrayado del enlace. */
+a.button {
+  text-decoration: none;
+}

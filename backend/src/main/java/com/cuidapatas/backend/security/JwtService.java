@@ -3,6 +3,7 @@ package com.cuidapatas.backend.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.DecodingException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +49,10 @@ public class JwtService {
         byte[] bytes;
         try {
             bytes = Decoders.BASE64.decode(secreto);
-        } catch (IllegalArgumentException noEsBase64) {
+        } catch (DecodingException noEsBase64) {
+            // Ojo: JJWT lanza DecodingException, que NO hereda de
+            // IllegalArgumentException. Atraparla es lo que permite usar un
+            // secreto escrito en texto plano y no solo en Base64.
             bytes = secreto.getBytes(StandardCharsets.UTF_8);
         }
 

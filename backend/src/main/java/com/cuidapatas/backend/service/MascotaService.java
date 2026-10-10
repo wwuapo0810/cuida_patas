@@ -26,6 +26,29 @@ public class MascotaService {
         return mascotas.stream().map(MascotaResponse::from).toList();
     }
 
+    /**
+     * Una mascota activa de un usuario concreto, lista para serializar.
+     *
+     * Agregado para la pantalla de perfil de mascota del frontend. Si la mascota
+     * existe pero es de otro usuario devuelve el mismo "no encontrado" que si no
+     * existiera, para no filtrar qué ids están ocupados.
+     *
+     * El mapeo a DTO se hace acá adentro a propósito: 'usuario' es LAZY y, con
+     * open-in-view en false, leerlo desde el controlador quedaría fuera de la
+     * transacción.
+     */
+    @Transactional(readOnly = true)
+    public MascotaResponse obtenerDeUsuario(Long mascotaId, Long usuarioId) {
+        Mascota mascota = obtenerActiva(mascotaId);
+
+        if (!mascota.getUsuario().getId().equals(usuarioId)) {
+            throw new RecursoNoEncontradoException(
+                    "No existe una mascota activa con id " + mascotaId);
+        }
+
+        return MascotaResponse.from(mascota);
+    }
+
     @Transactional(readOnly = true)
     public Mascota obtenerActiva(Long mascotaId) {
         return mascotaRepository.findById(mascotaId)
