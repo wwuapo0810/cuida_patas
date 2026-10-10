@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -10,6 +10,7 @@ import {
   Heart,
   Home,
   LockKeyhole,
+  LogOut,
   Mail,
   MapPin,
   Menu,
@@ -30,11 +31,34 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useParams,
 } from "react-router-dom";
+
+import { useAuth } from "./auth/AuthContext";
+import RutaProtegida from "./auth/RutaProtegida";
+import { useRecursoApi } from "./hooks/useRecursoApi";
+import { useSaludUsuario } from "./hooks/useSaludUsuario";
+import { listarMascotas, obtenerMascota } from "./services/mascotaService";
+import { listarSaludDeMascota } from "./services/saludService";
+import {
+  calcularEdad,
+  formatearEnum,
+  formatearFecha,
+  formatearPeso,
+} from "./utils/formato";
+import {
+  construirFilasMedicamentos,
+  construirFilasSalud,
+  describirEstado,
+  describirFrecuencia,
+  resumirEstados,
+  tonoDeMascota,
+} from "./utils/salud";
 
 const navItems = [
   { label: "Inicio", icon: Home, disabled: true },
-  { label: "Mis mascotas", icon: UsersRound, to: "/mascotas/max" },
+  // /mascotas resuelve a la primera mascota del usuario (ver MisMascotasPage).
+  { label: "Mis mascotas", icon: UsersRound, to: "/mascotas" },
   { label: "Salud", icon: Heart, to: "/salud" },
   { label: "Citas", icon: CalendarDays, to: "/citas" },
   { label: "Directorio", icon: MapPin, to: "/directorio" },
@@ -43,64 +67,12 @@ const navItems = [
 
 const mobileNavItems = navItems.filter((item) => item.to);
 
-const healthRecords = [
-  {
-    pet: "Max",
-    tone: "orange",
-    type: "Vacuna antirrábica",
-    date: "28 jul 2026",
-    next: "28 jul 2027",
-    status: "Al día",
-    statusTone: "good",
-  },
-  {
-    pet: "Max",
-    tone: "orange",
-    type: "Desparasitación interna",
-    date: "13 mayo 2026",
-    next: "20 agosto 2026",
-    status: "Vence en 7 días",
-    statusTone: "warning",
-  },
-  {
-    pet: "Luna",
-    tone: "teal",
-    type: "Vacuna triple felina",
-    date: "2 feb 2026",
-    next: "2 feb 2027",
-    status: "Al día",
-    statusTone: "good",
-  },
-  {
-    pet: "Luna",
-    tone: "teal",
-    type: "Desparasitación externa",
-    date: "1 junio 2026",
-    next: "1 julio 2026",
-    status: "Vencido",
-    statusTone: "danger",
-  },
-];
-
-const medicationRecords = [
-  {
-    pet: "Max",
-    tone: "orange",
-    medication: "Antipulgas oral",
-    dose: "1 tableta",
-    frequency: "Cada 30 días",
-    validity: "Vigente hasta 4 sep",
-  },
-  {
-    pet: "Luna",
-    tone: "teal",
-    medication: "Suplemento articular",
-    dose: "5 ml",
-    frequency: "1 vez al día",
-    validity: "Vigente hasta 15 sep",
-  },
-];
-
+/*
+ * Los datos de vacunas, desparasitaciones y medicamentos ya no se escriben a
+ * mano: salen del backend (ver HealthPage y PetProfilePage). Los arreglos de
+ * citas y de servicios siguen siendo de ejemplo porque esas pantallas todavía
+ * no tienen endpoint.
+ */
 const appointments = [
   {
     day: "06",
@@ -193,12 +165,35 @@ function Sidebar() {
         ))}
         <p className="sidebar__group">CUENTA</p>
         <SidebarItem {...navItems[5]} />
+        <BotonCerrarSesion />
       </nav>
-      <div className="sidebar__note">
-        <strong>2 mascotas registradas</strong>
-        <span>Mantén sus perfiles actualizados para recibir mejores recordatorios.</span>
-      </div>
     </aside>
+  );
+}
+
+/**
+ * Cierra la sesión: borra el token y manda a /login.
+ *
+ * Usa el mismo estilo .nav-item que el resto del menú para no romper el diseño
+ * de la barra lateral.
+ */
+function BotonCerrarSesion() {
+  const { usuario, salir } = useAuth();
+  const navigate = useNavigate();
+
+  function handleSalir() {
+    salir();
+    navigate("/login", { replace: true });
+  }
+
+  return (
+    <button className="nav-item nav-item--salir" type="button" onClick={handleSalir}>
+      <LogOut size={18} />
+      <span>
+        Cerrar sesión
+        {usuario && <small>{usuario.correo}</small>}
+      </span>
+    </button>
   );
 }
 
@@ -293,22 +288,83 @@ function PageHeading({ title, subtitle, action }) {
   );
 }
 
-function PrimaryButton({ children, icon: Icon = Plus, type = "button", onClick }) {
+function PrimaryButton({ children, icon: Icon = Plus, type = "button", onClick, disabled = false }) {
   return (
-    <button className="button button--primary" type={type} onClick={onClick}>
+    <button className="button button--primary" type={type} onClick={onClick} disabled={disabled}>
       {Icon && <Icon size={16} />}
       {children}
     </button>
   );
 }
 
+/** Error de validación devuelto por el backend para un campo concreto. */
+function ErrorCampo({ mensaje }) {
+  if (!mensaje) return null;
+  return <small className="error-campo">{mensaje}</small>;
+}
+
+/**
+ * Pantalla de acceso. Mismo diseño del prototipo; lo que cambia es que ahora los
+ * dos formularios hablan con /api/auth/login y /api/auth/registro.
+ */
 function AuthPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { usuario, entrar, registrarse } = useAuth();
 
-  function handleLogin(event) {
-    event.preventDefault();
-    navigate("/mascotas/max");
+  const [modo, setModo] = useState("login"); // "login" | "registro"
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const [erroresCampo, setErroresCampo] = useState({});
+
+  /*
+   * Si RutaProtegida redirigió hasta acá, vuelve a la pantalla que se quería
+   * abrir. Si no, la primera pantalla de la aplicación es Salud.
+   */
+  const destino = location.state?.destino ?? "/salud";
+
+  // Cubre dos casos: recién inició sesión, o ya tenía sesión y abrió /login a mano.
+  useEffect(() => {
+    if (usuario) {
+      navigate(destino, { replace: true });
+    }
+  }, [usuario, destino, navigate]);
+
+  function cambiarModo(nuevoModo) {
+    setModo(nuevoModo);
+    setError(null);
+    setErroresCampo({});
   }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError(null);
+    setErroresCampo({});
+    setEnviando(true);
+
+    const datos = Object.fromEntries(new FormData(event.currentTarget));
+
+    try {
+      if (modo === "login") {
+        await entrar({ correo: datos.correo, contrasena: datos.contrasena });
+      } else {
+        await registrarse({
+          nombre: datos.nombre,
+          correo: datos.correo,
+          contrasena: datos.contrasena,
+          telefono: datos.telefono,
+        });
+      }
+      // La redirección la hace el useEffect de arriba al cambiar 'usuario'.
+    } catch (errorApi) {
+      setError(errorApi.message);
+      setErroresCampo(errorApi.campos ?? {});
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const esRegistro = modo === "registro";
 
   return (
     <main className="auth-page">
@@ -342,53 +398,146 @@ function AuthPage() {
       <section className="auth-form-panel">
         <div className="auth-form-wrap">
           <div className="segmented segmented--wide" aria-label="Acceso">
-            <button className="is-selected" type="button">Iniciar sesión</button>
-            <button type="button" aria-disabled="true">Crear cuenta</button>
+            <button
+              className={esRegistro ? "" : "is-selected"}
+              type="button"
+              onClick={() => cambiarModo("login")}
+            >
+              Iniciar sesión
+            </button>
+            <button
+              className={esRegistro ? "is-selected" : ""}
+              type="button"
+              onClick={() => cambiarModo("registro")}
+            >
+              Crear cuenta
+            </button>
           </div>
           <div className="auth-form__heading">
-            <h2>Bienvenida de nuevo</h2>
-            <p>Ingresa tus datos para ver el estado de tus mascotas.</p>
+            <h2>{esRegistro ? "Creá tu cuenta" : "Bienvenido de nuevo"}</h2>
+            <p>
+              {esRegistro
+                ? "Registrate para llevar el control de salud de tus mascotas."
+                : "Ingresá tus datos para ver el estado de tus mascotas."}
+            </p>
           </div>
-          <form className="auth-form" onSubmit={handleLogin}>
+
+          {/* key: fuerza a React a recrear el formulario al cambiar de modo, así no
+              arrastra lo que el usuario ya había escrito en la otra pestaña. */}
+          <form className="auth-form" key={modo} onSubmit={handleSubmit}>
+            {esRegistro && (
+              <label>
+                Nombre completo
+                <span className="input-with-icon">
+                  <UsersRound size={17} />
+                  <input
+                    type="text"
+                    name="nombre"
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    placeholder="María Fernández"
+                  />
+                </span>
+                <ErrorCampo mensaje={erroresCampo.nombre} />
+              </label>
+            )}
+
             <label>
               Correo electrónico
               <span className="input-with-icon">
                 <Mail size={17} />
                 <input
                   type="email"
-                  name="email"
-                  defaultValue="maria.fernandez@correo.com"
+                  name="correo"
+                  required
+                  maxLength={160}
                   autoComplete="email"
+                  placeholder="tucorreo@ejemplo.com"
                 />
               </span>
+              <ErrorCampo mensaje={erroresCampo.correo} />
             </label>
+
             <label>
               Contraseña
               <span className="input-with-icon">
                 <LockKeyhole size={17} />
                 <input
                   type="password"
-                  name="password"
-                  defaultValue="cuidapatas"
-                  autoComplete="current-password"
+                  name="contrasena"
+                  required
+                  /* El backend exige 8 como mínimo: validarlo también acá evita un
+                     viaje al servidor para un error evitable. */
+                  minLength={esRegistro ? 8 : undefined}
+                  maxLength={72}
+                  autoComplete={esRegistro ? "new-password" : "current-password"}
+                  placeholder={esRegistro ? "Mínimo 8 caracteres" : "••••••••"}
                 />
               </span>
+              <ErrorCampo mensaje={erroresCampo.contrasena} />
             </label>
-            <div className="auth-options">
-              <label className="check-label">
-                <input type="checkbox" defaultChecked />
-                Recordarme
+
+            {esRegistro && (
+              <label>
+                Teléfono <span className="label-opcional">(opcional)</span>
+                <span className="input-with-icon">
+                  <Phone size={17} />
+                  <input
+                    type="tel"
+                    name="telefono"
+                    maxLength={30}
+                    autoComplete="tel"
+                    placeholder="8888-8888"
+                  />
+                </span>
+                <ErrorCampo mensaje={erroresCampo.telefono} />
               </label>
-              <button className="link-button" type="button">¿Olvidaste tu contraseña?</button>
-            </div>
-            <PrimaryButton type="submit" icon={null}>Iniciar sesión</PrimaryButton>
+            )}
+
+            {!esRegistro && (
+              <div className="auth-options">
+                <label className="check-label">
+                  <input type="checkbox" defaultChecked />
+                  Recordarme
+                </label>
+                <button className="link-button" type="button" aria-disabled="true">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+            )}
+
+            {error && (
+              <p className="form-error" role="alert">
+                <CircleAlert size={16} /> {error}
+              </p>
+            )}
+
+            <PrimaryButton type="submit" icon={null} disabled={enviando}>
+              {enviando
+                ? "Enviando…"
+                : esRegistro
+                  ? "Crear cuenta"
+                  : "Iniciar sesión"}
+            </PrimaryButton>
           </form>
+
+          {/* Login social: queda como en el prototipo, sin implementar todavía. */}
           <div className="divider"><span>o continúa con</span></div>
           <div className="social-row">
-            <button className="button button--outline" type="button"><strong className="google-g">G</strong> Google</button>
-            <button className="button button--outline" type="button"><strong className="facebook-f">f</strong> Facebook</button>
+            <button className="button button--outline" type="button" aria-disabled="true"><strong className="google-g">G</strong> Google</button>
+            <button className="button button--outline" type="button" aria-disabled="true"><strong className="facebook-f">f</strong> Facebook</button>
           </div>
-          <p className="auth-register">¿Aún no tienes cuenta? <button className="link-button link-button--orange" type="button">Regístrate gratis</button></p>
+          <p className="auth-register">
+            {esRegistro ? "¿Ya tenés cuenta? " : "¿Aún no tenés cuenta? "}
+            <button
+              className="link-button link-button--orange"
+              type="button"
+              onClick={() => cambiarModo(esRegistro ? "login" : "registro")}
+            >
+              {esRegistro ? "Iniciá sesión" : "Registrate gratis"}
+            </button>
+          </p>
         </div>
       </section>
     </main>
@@ -403,23 +552,155 @@ function PetAvatar({ size = "large", tone = "orange" }) {
   );
 }
 
+/**
+ * Redirige /mascotas a la primera mascota del usuario.
+ *
+ * El menú lateral no puede saber qué ids tiene el usuario, así que apunta a
+ * /mascotas y esta pantalla resuelve a dónde ir. Antes el enlace iba a
+ * /mascotas/max, un id escrito a mano en el prototipo.
+ */
+function MisMascotasPage() {
+  const { usuario } = useAuth();
+  const usuarioId = usuario?.id;
+
+  const cargar = useCallback(
+    ({ signal }) => listarMascotas(usuarioId, { signal }),
+    [usuarioId],
+  );
+
+  const { datos, cargando, error, recargar } = useRecursoApi(cargar, {
+    activo: Boolean(usuarioId),
+  });
+
+  if (cargando) {
+    return (
+      <AppShell>
+        <PanelCargando mensaje="Cargando tus mascotas…" />
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <PageHeading title="Mis mascotas" />
+        <AvisoError error={error} onReintentar={recargar} />
+      </AppShell>
+    );
+  }
+
+  if (!datos || datos.length === 0) {
+    return (
+      <AppShell>
+        <PageHeading title="Mis mascotas" subtitle="Todavía no hay ninguna registrada." />
+        <div className="empty-state panel">
+          Agregá tu primera mascota para empezar a llevar su historial de salud.
+        </div>
+      </AppShell>
+    );
+  }
+
+  return <Navigate to={`/mascotas/${datos[0].id}`} replace />;
+}
+
+/**
+ * Perfil de una mascota, con datos reales de la API.
+ *
+ * Se mantiene el layout del prototipo. Lo que antes estaba escrito a mano ahora
+ * viene de GET /api/mascotas/{id} y de los tres endpoints de salud; lo que no
+ * tiene endpoint todavía (citas, documentos, veterinaria asociada) queda
+ * marcado en el código.
+ */
 function PetProfilePage() {
+  const { mascotaId } = useParams();
+  const { usuario } = useAuth();
+
+  /*
+   * El prototipo usaba la ruta /mascotas/max. Si alguien llega con un id que no
+   * es un número (un enlace viejo o un marcador del navegador), se manda a
+   * /mascotas en vez de pedirle al backend un id inválido.
+   */
+  const idValido = /^\d+$/.test(mascotaId ?? "");
+
+  const cargar = useCallback(
+    async ({ signal }) => {
+      const [mascota, salud] = await Promise.all([
+        obtenerMascota(mascotaId, { signal }),
+        listarSaludDeMascota(mascotaId, { signal }),
+      ]);
+      return { mascota, salud };
+    },
+    [mascotaId],
+  );
+
+  const { datos, cargando, error, recargar } = useRecursoApi(cargar, { activo: idValido });
+
+  if (!idValido) {
+    return <Navigate to="/mascotas" replace />;
+  }
+
+  if (cargando) {
+    return (
+      <AppShell>
+        <PanelCargando mensaje="Cargando el perfil…" />
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <PageHeading title="Perfil de mascota" />
+        <AvisoError error={error} onReintentar={recargar} />
+      </AppShell>
+    );
+  }
+
+  const { mascota, salud } = datos;
+  const registros = [...salud.vacunas, ...salud.desparasitaciones, ...salud.medicamentos];
+
+  // El badge del encabezado refleja el peor estado de todos sus registros.
+  const estadoGeneral = peorEstado(registros);
+  const edad = calcularEdad(mascota.fechaNacimiento);
+  const peso = formatearPeso(mascota.peso);
+
+  // El recordatorio más urgente: el primer registro que ya venció o está por vencer.
+  const proximoVencimiento = registros
+    .filter((registro) => registro.estado === "VENCIDO" || registro.estado === "POR_VENCER")
+    .map((registro) => ({
+      ...registro,
+      referencia: registro.proximaFecha ?? registro.fechaFin,
+    }))
+    .sort((a, b) => (a.referencia ?? "").localeCompare(b.referencia ?? ""))[0];
+
+  const vacunasAlDia = salud.vacunas.every((vacuna) => vacuna.estado !== "VENCIDO");
+
   return (
     <AppShell>
-      <div className="breadcrumb">Mis mascotas / <strong>Max</strong></div>
+      <div className="breadcrumb">Mis mascotas / <strong>{mascota.nombre}</strong></div>
       <section className="pet-hero panel">
         <div className="pet-hero__identity">
           <div className="pet-avatar-wrap">
-            <PetAvatar />
-            <span className="status-chip status-chip--good">Al día</span>
+            <PetAvatar tone={tonoDeMascota(0)} />
+            <span className={`status-chip status-chip--${estadoGeneral.tono}`}>
+              {estadoGeneral.etiqueta}
+            </span>
           </div>
           <div>
-            <h1>Max</h1>
-            <p>Golden Retriever · Macho · 3 años</p>
+            <h1>{mascota.nombre}</h1>
+            <p>
+              {[mascota.raza, formatearEnum(mascota.sexo), edad].filter(Boolean).join(" · ")}
+            </p>
             <div className="chip-row">
-              <span className="soft-chip"><Heart size={14} /> 28 kg</span>
-              <span className="soft-chip"><CalendarDays size={14} /> Nació 12 mar 2023</span>
-              <span className="soft-chip"><Check size={14} /> Vacunas al día</span>
+              {peso && <span className="soft-chip"><Heart size={14} /> {peso}</span>}
+              {mascota.fechaNacimiento && (
+                <span className="soft-chip">
+                  <CalendarDays size={14} /> Nació {formatearFecha(mascota.fechaNacimiento)}
+                </span>
+              )}
+              {salud.vacunas.length > 0 && vacunasAlDia && (
+                <span className="soft-chip"><Check size={14} /> Vacunas al día</span>
+              )}
             </div>
           </div>
         </div>
@@ -429,11 +710,12 @@ function PetProfilePage() {
         </div>
       </section>
 
+      {/* Pestañas del prototipo: navegación entre secciones, todavía sin implementar. */}
       <div className="profile-tabs" role="tablist" aria-label="Secciones del perfil">
         <button className="is-active" type="button">Información general</button>
-        <button type="button">Salud</button>
-        <button type="button">Citas</button>
-        <button type="button">Documentos</button>
+        <button type="button" aria-disabled="true">Salud</button>
+        <button type="button" aria-disabled="true">Citas</button>
+        <button type="button" aria-disabled="true">Documentos</button>
       </div>
 
       <div className="profile-grid">
@@ -441,46 +723,144 @@ function PetProfilePage() {
           <section className="panel content-panel">
             <div className="panel-title-row"><h2>Datos básicos</h2><button className="link-button" type="button">Editar</button></div>
             <div className="detail-grid">
-              <Detail label="Nombre" value="Max" />
-              <Detail label="Especie" value="Perro" />
-              <Detail label="Raza" value="Golden Retriever" />
-              <Detail label="Sexo" value="Macho" />
-              <Detail label="Fecha de nacimiento" value="12 marzo 2023" />
-              <Detail label="Peso actual" value="28 kg" />
+              <Detail label="Nombre" value={mascota.nombre} />
+              <Detail label="Especie" value={formatearEnum(mascota.especie)} />
+              <Detail label="Raza" value={mascota.raza ?? "—"} />
+              <Detail label="Sexo" value={formatearEnum(mascota.sexo)} />
+              <Detail label="Fecha de nacimiento" value={formatearFecha(mascota.fechaNacimiento)} />
+              <Detail label="Peso actual" value={peso ?? "—"} />
             </div>
             <div className="metric-row">
-              <Metric value="4" label="Vacunas registradas" />
-              <Metric value="2" label="Citas este año" />
-              <Metric value="1" label="Medicamento activo" />
+              <Metric value={salud.vacunas.length} label="Vacunas registradas" />
+              <Metric value={salud.desparasitaciones.length} label="Desparasitaciones" />
+              <Metric
+                value={salud.medicamentos.filter((m) => m.estado !== "VENCIDO").length}
+                label="Medicamentos activos"
+              />
             </div>
           </section>
 
           <section className="panel content-panel activity-panel">
-            <div className="panel-title-row"><h2>Actividad reciente</h2><button className="link-button" type="button">Ver historial →</button></div>
-            <Activity icon={ShieldCheck} title="Vacuna antirrábica aplicada" meta="Hace 2 semanas · Clínica San Rafael" />
-            <Activity icon={CalendarDays} title="Cita de control realizada" meta="Hace 1 mes · Dra. Camila Rojas" />
-            <Activity icon={Heart} title="Peso actualizado a 28 kg" meta="Hace 1 mes" />
+            <div className="panel-title-row">
+              <h2>Actividad reciente</h2>
+              <NavLink className="link-button" to="/salud">Ver historial →</NavLink>
+            </div>
+            <ActividadReciente salud={salud} />
           </section>
         </div>
 
         <aside className="profile-grid__aside">
           <section className="panel content-panel">
             <h2>Propietario</h2>
-            <div className="owner-row"><span className="owner-avatar" /><div><strong>María Fernández</strong><span>mfernandez@correo.com</span></div></div>
+            <div className="owner-row">
+              <span className="owner-avatar" />
+              <div>
+                <strong>{usuario?.nombre ?? "—"}</strong>
+                <span>{usuario?.correo ?? ""}</span>
+              </div>
+            </div>
           </section>
+
           <section className="panel content-panel reminder-card">
             <h2>Próximo recordatorio</h2>
-            <div className="reminder-row"><span className="reminder-icon"><Clock3 size={18} /></span><div><strong>Desparasitación pendiente</strong><span>Vence en 7 días · 20 de agosto</span></div></div>
-            <button className="button button--outline" type="button">Agendar ahora</button>
+            {proximoVencimiento ? (
+              <div className="reminder-row">
+                <span className="reminder-icon"><Clock3 size={18} /></span>
+                <div>
+                  <strong>{nombreDeRegistro(proximoVencimiento)}</strong>
+                  <span>
+                    {describirEstado(proximoVencimiento.estado, proximoVencimiento.referencia).etiqueta}
+                    {" · "}
+                    {formatearFecha(proximoVencimiento.referencia)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="sin-datos">No hay nada por vencer. Todo al día.</p>
+            )}
+            <NavLink className="button button--outline" to="/citas">Agendar ahora</NavLink>
           </section>
+
+          {/* Sin endpoint de servicios todavía: queda el bloque del prototipo. */}
           <section className="panel content-panel">
             <h2>Veterinaria asociada</h2>
-            <div className="owner-row"><span className="clinic-avatar" /><div><strong>Veterinaria San Rafael</strong><span>1.2 km · Última visita hace 1 mes</span></div></div>
+            <p className="sin-datos">Aún no hay una veterinaria asociada a este perfil.</p>
           </section>
         </aside>
       </div>
     </AppShell>
   );
+}
+
+/**
+ * Los últimos movimientos de salud de la mascota, ordenados del más reciente al
+ * más antiguo. Reemplaza la lista fija del prototipo.
+ */
+function ActividadReciente({ salud }) {
+  const eventos = [
+    ...salud.vacunas.map((vacuna) => ({
+      icono: ShieldCheck,
+      titulo: `Vacuna ${vacuna.nombre} aplicada`,
+      fecha: vacuna.fechaAplicacion,
+      detalle: vacuna.veterinario,
+    })),
+    ...salud.desparasitaciones.map((item) => ({
+      icono: Heart,
+      titulo: `Desparasitación ${formatearEnum(item.tipo).toLowerCase()}`,
+      fecha: item.fecha,
+      detalle: item.producto,
+    })),
+    ...salud.medicamentos.map((medicamento) => ({
+      icono: Pill,
+      titulo: `${medicamento.nombre} iniciado`,
+      fecha: medicamento.fechaInicio,
+      detalle: medicamento.dosis,
+    })),
+  ]
+    .filter((evento) => evento.fecha)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+    .slice(0, 4);
+
+  if (eventos.length === 0) {
+    return <p className="sin-datos">Todavía no hay registros de salud para esta mascota.</p>;
+  }
+
+  return eventos.map((evento, indice) => (
+    <Activity
+      key={`${evento.titulo}-${evento.fecha}-${indice}`}
+      icon={evento.icono}
+      title={evento.titulo}
+      meta={[formatearFecha(evento.fecha), evento.detalle].filter(Boolean).join(" · ")}
+    />
+  ));
+}
+
+/** El estado más grave de un conjunto de registros, para el badge del encabezado. */
+function peorEstado(registros) {
+  const prioridad = ["VENCIDO", "POR_VENCER", "AL_DIA"];
+
+  const encontrado = prioridad.find((estado) =>
+    registros.some((registro) => registro.estado === estado),
+  );
+
+  if (!encontrado) {
+    return { etiqueta: "Sin registros", tono: "neutral" };
+  }
+
+  // Sin fecha de referencia: se quiere la etiqueta genérica ("Por vencer"), no
+  // el conteo de días de un registro puntual.
+  return describirEstado(encontrado, null);
+}
+
+/** Nombre legible de un registro de salud, sea vacuna, desparasitación o medicamento. */
+function nombreDeRegistro(registro) {
+  if (registro.tipo) {
+    return `Desparasitación ${formatearEnum(registro.tipo).toLowerCase()}`;
+  }
+  if (registro.dosis !== undefined) {
+    return `${registro.nombre} (${registro.dosis ?? "medicamento"})`;
+  }
+  return `Vacuna ${registro.nombre}`;
 }
 
 function Detail({ label, value }) {
@@ -500,14 +880,55 @@ function Activity({ icon: Icon, title, meta }) {
   );
 }
 
+const TODAS_LAS_MASCOTAS = "Todas las mascotas";
+
+/* Constante compartida: un [] nuevo en cada render invalidaría los useMemo de
+   abajo mientras los datos todavía están cargando. */
+const SIN_MASCOTAS = [];
+
+/**
+ * Pantalla de Salud, conectada a la API.
+ *
+ * Mismo diseño que el prototipo (tablas, badges, tarjetas de resumen); la única
+ * diferencia es que los registros, sus estados y el filtro por mascota salen del
+ * backend en vez de arreglos escritos a mano.
+ */
 function HealthPage() {
-  const [petFilter, setPetFilter] = useState("Todas las mascotas");
+  const { datos, cargando, error, recargar } = useSaludUsuario();
+
+  const [petFilter, setPetFilter] = useState(TODAS_LAS_MASCOTAS);
   const [recordFilter, setRecordFilter] = useState("Todo");
 
-  const filteredHealth = useMemo(
-    () => healthRecords.filter((record) => petFilter === "Todas las mascotas" || record.pet === petFilter),
-    [petFilter],
+  const mascotas = datos ?? SIN_MASCOTAS;
+
+  // Las opciones del filtro ya no están escritas a mano: son las mascotas del usuario.
+  const opcionesMascota = useMemo(
+    () => [TODAS_LAS_MASCOTAS, ...mascotas.map(({ mascota }) => mascota.nombre)],
+    [mascotas],
   );
+
+  /*
+   * Se arman todas las filas y después se filtra, para que las tarjetas de
+   * resumen sigan contando sobre el total aunque haya un filtro activo.
+   */
+  const filasSalud = useMemo(() => construirFilasSalud(mascotas), [mascotas]);
+  const filasMedicamentos = useMemo(() => construirFilasMedicamentos(mascotas), [mascotas]);
+  const resumen = useMemo(
+    () => resumirEstados(filasSalud, filasMedicamentos),
+    [filasSalud, filasMedicamentos],
+  );
+
+  const coincideMascota = (fila) =>
+    petFilter === TODAS_LAS_MASCOTAS || fila.mascotaNombre === petFilter;
+
+  const saludVisible = filasSalud.filter(
+    (fila) =>
+      coincideMascota(fila) && (recordFilter === "Todo" || fila.categoria === recordFilter),
+  );
+  const medicamentosVisibles = filasMedicamentos.filter(coincideMascota);
+
+  const mostrarSalud = recordFilter !== "Medicamentos";
+  const mostrarMedicamentos = recordFilter === "Todo" || recordFilter === "Medicamentos";
 
   return (
     <AppShell>
@@ -516,59 +937,137 @@ function HealthPage() {
         subtitle="Vacunas, desparasitaciones y medicamentos de tus mascotas."
         action={<PrimaryButton>Nuevo registro</PrimaryButton>}
       />
-      <div className="toolbar-row">
-        <FilterGroup options={["Todas las mascotas", "Max", "Luna"]} value={petFilter} onChange={setPetFilter} />
-        <FilterGroup options={["Todo", "Vacunas", "Desparasitación", "Medicamentos"]} value={recordFilter} onChange={setRecordFilter} />
-      </div>
-      <div className="summary-grid summary-grid--four">
-        <Summary icon={Check} value="6" label="Registros al día" tone="good" />
-        <Summary icon={Clock3} value="2" label="Próximos a vencer" tone="warning" />
-        <Summary icon={CircleAlert} value="1" label="Vencido" tone="danger" />
-        <Summary icon={Pill} value="2" label="Medicamentos activos" tone="teal" />
-      </div>
 
-      {recordFilter !== "Medicamentos" && (
-        <DataSection title="Vacunas y desparasitación" action="Exportar historial">
-          <div className="data-table data-table--health" role="table" aria-label="Vacunas y desparasitación">
-            <div className="data-table__head" role="row">
-              <span>Mascota</span><span>Tipo</span><span>Fecha de aplicación</span><span>Próxima fecha</span><span>Estado</span><span />
-            </div>
-            {filteredHealth.map((record) => (
-              <div className="data-table__row" role="row" key={`${record.pet}-${record.type}`}>
-                <span data-label="Mascota"><PetAvatar size="small" tone={record.tone} /> {record.pet}</span>
-                <strong data-label="Tipo">{record.type}</strong>
-                <span data-label="Aplicación">{record.date}</span>
-                <span data-label="Próxima fecha">{record.next}</span>
-                <span data-label="Estado"><span className={`status-chip status-chip--${record.statusTone}`}>{record.status}</span></span>
-                <button className="table-action" type="button" aria-label={`Editar ${record.type}`}><Edit3 size={15} /></button>
-              </div>
-            ))}
-          </div>
-        </DataSection>
+      {/* Si la API falla se muestra el aviso y no se renderizan las tablas: así la
+          pantalla no se rompe ni queda mostrando datos a medias. */}
+      {error && <AvisoError error={error} onReintentar={recargar} />}
+
+      {cargando && <PanelCargando mensaje="Cargando los registros de salud…" />}
+
+      {!cargando && !error && mascotas.length === 0 && (
+        <div className="empty-state panel">
+          Todavía no hay mascotas registradas en esta cuenta. Al agregar una, acá
+          aparecerá su historial de salud.
+        </div>
       )}
 
-      {recordFilter !== "Vacunas" && recordFilter !== "Desparasitación" && (
-        <DataSection title="Medicamentos activos">
-          <div className="data-table data-table--medication" role="table" aria-label="Medicamentos activos">
-            <div className="data-table__head" role="row">
-              <span>Mascota</span><span>Medicamento</span><span>Dosis</span><span>Frecuencia</span><span>Vigencia</span><span />
-            </div>
-            {medicationRecords
-              .filter((record) => petFilter === "Todas las mascotas" || record.pet === petFilter)
-              .map((record) => (
-                <div className="data-table__row" role="row" key={record.medication}>
-                  <span data-label="Mascota"><PetAvatar size="small" tone={record.tone} /> {record.pet}</span>
-                  <strong data-label="Medicamento">{record.medication}</strong>
-                  <span data-label="Dosis">{record.dose}</span>
-                  <span data-label="Frecuencia">{record.frequency}</span>
-                  <span data-label="Vigencia"><span className="status-chip status-chip--good">{record.validity}</span></span>
-                  <button className="table-action" type="button" aria-label={`Editar ${record.medication}`}><Edit3 size={15} /></button>
-                </div>
-              ))}
+      {!cargando && !error && mascotas.length > 0 && (
+        <>
+          <div className="toolbar-row">
+            <FilterGroup options={opcionesMascota} value={petFilter} onChange={setPetFilter} />
+            <FilterGroup
+              options={["Todo", "Vacunas", "Desparasitación", "Medicamentos"]}
+              value={recordFilter}
+              onChange={setRecordFilter}
+            />
           </div>
-        </DataSection>
+
+          <div className="summary-grid summary-grid--four">
+            <Summary icon={Check} value={resumen.alDia} label="Registros al día" tone="good" />
+            <Summary icon={Clock3} value={resumen.porVencer} label="Próximos a vencer" tone="warning" />
+            <Summary icon={CircleAlert} value={resumen.vencidos} label="Vencidos" tone="danger" />
+            <Summary icon={Pill} value={resumen.medicamentosActivos} label="Medicamentos activos" tone="teal" />
+          </div>
+
+          {mostrarSalud && (
+            <DataSection title="Vacunas y desparasitación">
+              <div className="data-table data-table--health" role="table" aria-label="Vacunas y desparasitación">
+                <div className="data-table__head" role="row">
+                  <span>Mascota</span><span>Tipo</span><span>Fecha de aplicación</span><span>Próxima fecha</span><span>Estado</span><span />
+                </div>
+                {saludVisible.map((fila) => {
+                  const estado = describirEstado(fila.estado, fila.proximaFecha);
+                  return (
+                    <div className="data-table__row" role="row" key={fila.id}>
+                      <span data-label="Mascota">
+                        <PetAvatar size="small" tone={fila.tono} /> {fila.mascotaNombre}
+                      </span>
+                      <strong data-label="Tipo">
+                        {fila.tipo}
+                        {fila.detalle && <small className="celda-detalle">{fila.detalle}</small>}
+                      </strong>
+                      <span data-label="Aplicación">{formatearFecha(fila.fecha)}</span>
+                      <span data-label="Próxima fecha">{formatearFecha(fila.proximaFecha)}</span>
+                      <span data-label="Estado">
+                        <span className={`status-chip status-chip--${estado.tono}`}>{estado.etiqueta}</span>
+                      </span>
+                      <button className="table-action" type="button" aria-label={`Editar ${fila.tipo}`}>
+                        <Edit3 size={15} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {saludVisible.length === 0 && (
+                  <div className="data-table__vacio">No hay registros que coincidan con el filtro.</div>
+                )}
+              </div>
+            </DataSection>
+          )}
+
+          {mostrarMedicamentos && (
+            <DataSection title="Medicamentos">
+              <div className="data-table data-table--medication" role="table" aria-label="Medicamentos">
+                <div className="data-table__head" role="row">
+                  <span>Mascota</span><span>Medicamento</span><span>Dosis</span><span>Frecuencia</span><span>Vigencia</span><span />
+                </div>
+                {medicamentosVisibles.map((fila) => {
+                  const estado = describirEstado(fila.estado, fila.fechaFin);
+                  return (
+                    <div className="data-table__row" role="row" key={fila.id}>
+                      <span data-label="Mascota">
+                        <PetAvatar size="small" tone={fila.tono} /> {fila.mascotaNombre}
+                      </span>
+                      <strong data-label="Medicamento">{fila.nombre}</strong>
+                      <span data-label="Dosis">{fila.dosis ?? "—"}</span>
+                      <span data-label="Frecuencia">{describirFrecuencia(fila.frecuenciaHoras)}</span>
+                      <span data-label="Vigencia">
+                        <span className={`status-chip status-chip--${estado.tono}`}>
+                          {fila.fechaFin ? `Hasta ${formatearFecha(fila.fechaFin)}` : estado.etiqueta}
+                        </span>
+                      </span>
+                      <button className="table-action" type="button" aria-label={`Editar ${fila.nombre}`}>
+                        <Edit3 size={15} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {medicamentosVisibles.length === 0 && (
+                  <div className="data-table__vacio">No hay medicamentos registrados.</div>
+                )}
+              </div>
+            </DataSection>
+          )}
+        </>
       )}
     </AppShell>
+  );
+}
+
+/** Aviso de error de API, con botón para reintentar sin recargar la página. */
+function AvisoError({ error, onReintentar }) {
+  return (
+    <div className="panel aviso-error" role="alert">
+      <span className="aviso-error__icono"><CircleAlert size={20} /></span>
+      <div>
+        <strong>No se pudieron cargar los datos</strong>
+        <span>{error.message}</span>
+      </div>
+      {onReintentar && (
+        <button className="button button--outline" type="button" onClick={onReintentar}>
+          Reintentar
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Indicador de carga con el ancho de un panel, para no mover el layout. */
+function PanelCargando({ mensaje }) {
+  return (
+    <div className="panel panel-cargando">
+      <span className="spinner" aria-hidden="true" />
+      <p>{mensaje}</p>
+    </div>
   );
 }
 
@@ -750,12 +1249,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Única ruta pública. */}
       <Route path="/login" element={<AuthPage />} />
-      <Route path="/mascotas/max" element={<PetProfilePage />} />
-      <Route path="/salud" element={<HealthPage />} />
-      <Route path="/citas" element={<CalendarPage />} />
-      <Route path="/calendario" element={<CalendarPage />} />
-      <Route path="/directorio" element={<DirectoryPage />} />
+
+      {/* Todo lo demás exige sesión: sin token, RutaProtegida redirige a /login. */}
+      <Route path="/mascotas" element={<RutaProtegida><MisMascotasPage /></RutaProtegida>} />
+      <Route path="/mascotas/:mascotaId" element={<RutaProtegida><PetProfilePage /></RutaProtegida>} />
+      <Route path="/salud" element={<RutaProtegida><HealthPage /></RutaProtegida>} />
+      <Route path="/citas" element={<RutaProtegida><CalendarPage /></RutaProtegida>} />
+      <Route path="/calendario" element={<RutaProtegida><CalendarPage /></RutaProtegida>} />
+      <Route path="/directorio" element={<RutaProtegida><DirectoryPage /></RutaProtegida>} />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
