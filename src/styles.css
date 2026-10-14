@@ -44,7 +44,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -572,6 +574,7 @@ strong {
 /* Pet profile */
 .pet-hero {
   min-height: 166px;
+  margin-bottom: 18px;
   padding: 24px;
   display: flex;
   align-items: center;
@@ -672,32 +675,6 @@ strong {
 .pet-hero__actions {
   display: grid;
   gap: 10px;
-}
-
-.profile-tabs {
-  min-height: 58px;
-  margin: 8px 0 20px;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: end;
-  gap: 30px;
-}
-
-.profile-tabs button {
-  height: 51px;
-  padding: 0 2px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.82rem;
-}
-
-.profile-tabs button.is-active {
-  border-bottom-color: var(--orange-600);
-  color: var(--ink);
-  font-weight: 700;
 }
 
 .profile-grid {
@@ -1446,7 +1423,7 @@ strong {
     border: 1px solid rgb(255 255 255 / 12%);
     border-radius: 18px;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     background: var(--teal-950);
     box-shadow: 0 14px 38px rgb(15 63 64 / 28%);
   }
@@ -1518,15 +1495,6 @@ strong {
 
   .pet-hero__actions {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .profile-tabs {
-    gap: 18px;
-    overflow-x: auto;
-  }
-
-  .profile-tabs button {
-    flex: 0 0 auto;
   }
 
   .data-section {
@@ -1903,4 +1871,501 @@ strong {
 /* Los <NavLink> que usan clase .button necesitan perder el subrayado del enlace. */
 a.button {
   text-decoration: none;
+}
+
+/* ===========================================================================
+   Formularios modales (nuevo registro de salud, nueva cita)
+   =========================================================================== */
+
+.modal-fondo {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background: rgb(15 63 64 / 42%);
+  backdrop-filter: blur(3px);
+  animation: page-in 180ms ease both;
+}
+
+.modal {
+  width: min(560px, 100%);
+  padding: 24px;
+  box-shadow: 0 24px 60px rgb(15 63 64 / 24%);
+}
+
+.modal__header {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal__header h2 {
+  margin-bottom: 4px;
+  font-size: 1.2rem;
+}
+
+.modal__header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.modal > .segmented {
+  margin-bottom: 18px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.form-modal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.form-modal > .form-error,
+.form-modal > .modal__acciones {
+  grid-column: 1 / -1;
+}
+
+.modal__acciones {
+  margin-top: 4px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.campo {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.campo--ancho {
+  grid-column: 1 / -1;
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: 0;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.campo textarea {
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+  border-color: var(--teal-700);
+  box-shadow: 0 0 0 3px rgb(38 127 128 / 10%);
+}
+
+.campo input:disabled,
+.campo select:disabled {
+  background: #f7f8f7;
+  color: var(--muted);
+}
+
+.campo-ayuda {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+/* Confirmación después de guardar. */
+.aviso-exito {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border: 1px solid rgb(62 144 103 / 28%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--good-bg);
+  color: var(--good);
+  font-size: 0.86rem;
+  font-weight: 600;
+  animation: page-in 200ms ease both;
+}
+
+/* ===========================================================================
+   Inicio y Mis mascotas
+   =========================================================================== */
+
+.inicio-grid {
+  margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.pendiente-row,
+.mascota-mini {
+  min-height: 58px;
+  border-bottom: 1px solid #edf0ef;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pendiente-row:last-child {
+  border-bottom: 0;
+}
+
+.pendiente-row > div,
+.mascota-mini > div {
+  min-width: 0;
+  margin-right: auto;
+  display: grid;
+  gap: 2px;
+}
+
+.pendiente-row strong,
+.mascota-mini strong {
+  font-size: 0.85rem;
+}
+
+.pendiente-row span:not(.status-chip),
+.mascota-mini span:not(.status-chip) {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.mascotas-mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.mascota-mini {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.mascota-mini:hover,
+.mascota-card:hover {
+  border-color: var(--teal-700);
+  transform: translateY(-1px);
+}
+
+.mascotas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.mascota-card {
+  padding: 20px;
+  display: grid;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.mascota-card__top {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mascota-card .pet-avatar--large {
+  width: 76px;
+  height: 76px;
+  border-radius: 20px;
+}
+
+.mascota-card h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.mascota-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.mascota-card__metricas {
+  margin: 10px 0 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mascota-card__metricas span {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: #f7f8f7;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.mascota-card__metricas strong {
+  color: var(--ink);
+}
+
+.mascota-card__ver {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--orange-600);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* Perfil: migas + selector para saltar entre mascotas. */
+.perfil-barra {
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.perfil-barra .breadcrumb {
+  margin: 0;
+}
+
+.perfil-barra .segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.breadcrumb a {
+  color: var(--teal-700);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+/* ===========================================================================
+   Calendario con datos reales
+   =========================================================================== */
+
+.boton-hoy {
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.calendar-day.is-today:not(.is-selected) {
+  box-shadow: inset 0 0 0 2px var(--orange-500);
+}
+
+/* Con dos eventos en el mismo día, el segundo va pegado al primero. */
+.calendar-day small + small {
+  margin-top: -4px;
+}
+
+.event-dark { background: var(--teal-950); color: #fff; }
+.calendar-day.is-selected .event-dark { background: #fff; color: var(--teal-950); }
+.calendar-day.is-selected .event-orange { background: rgb(255 255 255 / 85%); }
+.calendar-day small.event-mas { padding: 0; color: var(--muted); }
+.calendar-day.is-selected small.event-mas { color: rgb(255 255 255 / 72%); }
+
+.agenda-card > .segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.agenda-card__titulo {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agenda-card__titulo h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.agenda-card__agendar {
+  width: 100%;
+  margin-top: 14px;
+}
+
+/* ===========================================================================
+   Configuración
+   =========================================================================== */
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.config-grid .panel-title-row h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interruptor {
+  position: relative;
+  min-height: 58px;
+  border-bottom: 1px solid #edf0ef;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+
+.interruptor + .campo {
+  margin-top: 16px;
+}
+
+.interruptor > span {
+  display: grid;
+  gap: 2px;
+}
+
+.interruptor strong {
+  font-size: 0.86rem;
+}
+
+.interruptor small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* El checkbox real queda invisible encima del dibujo, así sigue siendo accesible. */
+.interruptor input {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.interruptor i {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: #cfd9d8;
+  transition: background 160ms ease;
+}
+
+.interruptor i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  transition: transform 160ms ease;
+}
+
+.interruptor input:checked + i {
+  background: var(--teal-700);
+}
+
+.interruptor input:checked + i::after {
+  transform: translateX(18px);
+}
+
+.interruptor input:focus-visible + i {
+  outline: 3px solid rgb(239 134 52 / 30%);
+  outline-offset: 2px;
+}
+
+.plan-card__nombre {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 1.6rem;
+}
+
+.plan-card ul {
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.plan-card li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-card li svg {
+  color: var(--good);
+}
+
+.plan-card--premium {
+  border-color: rgb(239 134 52 / 40%);
+  background: linear-gradient(160deg, #fff, var(--orange-100));
+}
+
+.config-acciones {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 1180px) {
+  .inicio-grid,
+  .config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .form-modal {
+    grid-template-columns: 1fr;
+  }
+
+  .modal {
+    padding: 18px;
+  }
+
+  .modal__acciones {
+    flex-direction: column-reverse;
+  }
+
+  .modal__acciones .button {
+    width: 100%;
+  }
 }

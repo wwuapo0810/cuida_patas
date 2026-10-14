@@ -35,3 +35,29 @@ export async function listarSaludDeMascota(mascotaId, { signal } = {}) {
 
   return { vacunas, desparasitaciones, medicamentos };
 }
+
+/*
+ * Altas de registros de salud. El backend valida las fechas (la próxima tiene
+ * que ser posterior a la de aplicación) y responde 400 con el detalle.
+ */
+
+export function crearVacuna(mascotaId, datos) {
+  return apiFetch(`/api/mascotas/${encodeURIComponent(mascotaId)}/vacunas`, {
+    method: "POST",
+    body: datos,
+  });
+}
+
+export function crearDesparasitacion(mascotaId, datos) {
+  return apiFetch(`/api/mascotas/${encodeURIComponent(mascotaId)}/desparasitaciones`, {
+    method: "POST",
+    body: datos,
+  });
+}
+
+export function crearMedicamento(mascotaId, datos) {
+  return apiFetch(`/api/mascotas/${encodeURIComponent(mascotaId)}/medicamentos`, {
+    method: "POST",
+    body: datos,
+  });
+}
